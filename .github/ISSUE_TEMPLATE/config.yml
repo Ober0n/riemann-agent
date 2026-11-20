@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A problem with the Lean source
+    url: https://github.com/tamnd/riemann-lean/issues
+    about: Report a build or check result for the Lean code there.
+  - name: A problem with the written proof
+    url: https://github.com/tamnd/riemann/issues
+    about: Report an error in the text or a missing link there.
