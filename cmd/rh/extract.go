@@ -16,6 +16,7 @@ import (
 
 	"github.com/tamnd/riemann-agent/extract"
 	"github.com/tamnd/riemann-agent/index"
+	"github.com/tamnd/riemann-agent/trust"
 )
 
 func runExtract(args []string, stdout, stderr io.Writer) error {
@@ -30,6 +31,7 @@ func runExtract(args []string, stdout, stderr io.Writer) error {
 	module := fs.String("module", "Main", "the module to import")
 	timeout := fs.Duration("timeout", 0, "the time limit of the Lean run, for example 6h; 0 for no limit")
 	printFile := fs.Bool("print", false, "print the Lean file and stop; the roots come from -index")
+	artifactsFile := fs.String("artifacts", "", "a JSON file that tells where the compiled files come from; rh writes it to extract.json")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return err
@@ -41,6 +43,10 @@ func runExtract(args []string, stdout, stderr io.Writer) error {
 	}
 	if !*printFile && (*out == "" || (*lean == "") == (*exactFile == "")) {
 		return fmt.Errorf("%w: extract needs -out and one of -lean and -exact", errUsage)
+	}
+	arts, err := trust.ReadArtifacts(*artifactsFile)
+	if err != nil {
+		return err
 	}
 	ix, err := index.Load(*indexDir)
 	if err != nil {
@@ -102,7 +108,7 @@ func runExtract(args []string, stdout, stderr io.Writer) error {
 	if err := ix.Write(*out); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(st, "", "  ")
+	data, err := json.MarshalIndent(extractRecord{Stats: st, Artifacts: arts}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -110,5 +116,14 @@ func runExtract(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "%d constants, %d declarations with the exact graph, %d with the syntactic graph, %d auxiliary constants; %d edges added and %d removed\n", st.Constants, st.Matched, st.Missing, st.Auxiliary, st.Added, st.Removed)
+	if arts.IsCached() {
+		fmt.Fprintln(stdout, "The exact graph comes from cached build files. extract.json records their source.")
+	}
 	return nil
+}
+
+// extractRecord is the content of extract.json: the statistics of the merge, and the source of the compiled files when the run gave one.
+type extractRecord struct {
+	extract.Stats
+	Artifacts *trust.Artifacts `json:"artifacts,omitempty"`
 }

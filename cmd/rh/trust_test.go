@@ -54,6 +54,83 @@ func TestWriteTrust(t *testing.T) {
 	}
 }
 
+func TestWriteTrustCached(t *testing.T) {
+	dir := t.TempDir()
+	arts := &trust.Artifacts{Kind: trust.Cached, Source: "https://rh-cache.example.org", Revision: "e50d098", Pins: map[string]string{"map": strings.Repeat("a", 64)}}
+	ax := trust.Axioms{Date: "2026-11-22", Module: "Main", Lean: "Lean (version 4.33.1)", OK: true, Artifacts: arts, Theorems: []trust.Theorem{{Name: "riemannHypothesis", Print: trust.Standard, Walk: trust.Standard, Match: true, Extra: []string{}}}}
+	rp := &trust.Replay{Date: "2026-11-22", Tool: "lean4checker --fresh", Module: "Main", Seconds: 60, Exit: 0, OK: true, Artifacts: arts}
+	if err := writeTrust(dir, ax, rp); err != nil {
+		t.Fatal(err)
+	}
+	var tr site.Trust
+	data, err := os.ReadFile(filepath.Join(dir, "records", "trust.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &tr); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range tr.Checks {
+		switch c.ID {
+		case "Q1":
+			if c.State != "not run" || c.Artifacts != "" {
+				t.Errorf("Q1 is %q (%q); cached files must not answer the build question", c.State, c.Artifacts)
+			}
+		case "Q2", "Q3":
+			// The outcome and the provenance are separate fields.
+			if c.State != "yes" || c.Class() != "yes" {
+				t.Errorf("%s is %q with class %q, want the outcome yes", c.ID, c.State, c.Class())
+			}
+			if !c.Cached() || c.Artifacts != site.ArtifactsCached || c.Source != "https://rh-cache.example.org at e50d098" {
+				t.Errorf("%s provenance: %q, %q", c.ID, c.Artifacts, c.Source)
+			}
+			if !strings.Contains(c.Note, "not an independent clean build") {
+				t.Errorf("%s note: %q", c.ID, c.Note)
+			}
+		}
+	}
+	// Even with every check yes, cached files do not make a claim.
+	all := tr
+	all.Checks = append([]site.TrustCheck(nil), tr.Checks...)
+	for i := range all.Checks {
+		all.Checks[i].State = "yes"
+	}
+	if all.Claimed() {
+		t.Error("a report with a check on cached files must not count as claimed")
+	}
+	for i := range all.Checks {
+		if all.Checks[i].Cached() {
+			all.Checks[i].Artifacts = site.ArtifactsClean
+		}
+	}
+	if !all.Claimed() {
+		t.Error("the same report on clean builds must count as claimed")
+	}
+	ax2, err := os.ReadFile(filepath.Join(dir, "records", "axioms.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(ax2), `"kind": "cached"`) {
+		t.Errorf("axioms.json has no source: %s", ax2)
+	}
+
+	// A failure on cached files stays no.
+	ax.OK = false
+	ax.Theorems[0].Extra = []string{"sorryAx"}
+	if err := writeTrust(dir, ax, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(filepath.Join(dir, "records", "trust.json"))
+	if err := json.Unmarshal(data, &tr); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range tr.Checks {
+		if c.ID == "Q2" && (c.State != "no" || !c.Cached()) {
+			t.Errorf("Q2 is %q (%q) after a failure, want no on cached files", c.State, c.Artifacts)
+		}
+	}
+}
+
 func TestTrustPrint(t *testing.T) {
 	var out, errb strings.Builder
 	if code := run([]string{"trust", "-print", "-theorems", "x,y"}, &out, &errb); code != 0 {

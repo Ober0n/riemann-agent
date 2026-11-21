@@ -4,6 +4,12 @@ All changes that a user can see are in this file. The format follows [Keep a Cha
 
 ## Unreleased
 
+### Added
+
+- `rh trust -artifacts` and `rh extract -artifacts` read a JSON file that tells where the compiled files come from. The tools copy it to `axioms.json`, `replay.json` and `extract.json`.
+- A check in `trust.json` has two new fields, `artifacts` (`clean` or `cached`) and `source`. They are separate from `state`, which stays the outcome. The site shows a "cached files" mark, and it does not count a check on cached files as a claim. Question Q1 does not change.
+- `scripts/cached-check/` gets the exact declaration graph from the pinned community Lake cache (4.94 GB), with no full build. `rhcache.py` checks each pin and each archive entry before `leantar` unpacks anything. `run.sh` runs `leantar`, Lake, Lean and `rh` in bubblewrap with no network.
+
 ## v0.6.4 (2026-11-22)
 
 Written chapters for the Learn section, for milestone M6.

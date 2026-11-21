@@ -94,8 +94,23 @@ type Trust struct {
 type TrustCheck struct {
 	ID       string `json:"id"`
 	Question string `json:"question"`
-	State    string `json:"state"` // yes, no, open or "not run"
+	State    string `json:"state"` // yes, no, open or "not run": the outcome of the check
 	Note     string `json:"note,omitempty"`
+	// Artifacts tells where the compiled files of the check come from, apart from its outcome: ArtifactsClean, ArtifactsCached, or empty for a check that reads no compiled files.
+	Artifacts string `json:"artifacts,omitempty"`
+	// Source names the compiled files, for example a URL and a revision. It is empty when Artifacts is empty.
+	Source string `json:"source,omitempty"`
+}
+
+// The values of TrustCheck.Artifacts. They are the same as the kinds of trust.Artifacts.
+const (
+	ArtifactsClean  = "clean"  // we built the compiled files from the pinned source
+	ArtifactsCached = "cached" // other people built the compiled files
+)
+
+// Cached reports whether the check ran on compiled files that other people built. Its outcome then tells what these files contain, not that the pinned source builds.
+func (c TrustCheck) Cached() bool {
+	return c.Artifacts == ArtifactsCached
 }
 
 // Class returns the CSS class of the state.
@@ -123,13 +138,13 @@ func DefaultTrust() Trust {
 	}}
 }
 
-// Claimed reports whether each check of the report says yes.
+// Claimed reports whether each check of the report says yes, and no check ran on cached build files.
 func (t Trust) Claimed() bool {
 	if len(t.Checks) == 0 {
 		return false
 	}
 	for _, c := range t.Checks {
-		if c.State != "yes" {
+		if c.State != "yes" || c.Cached() {
 			return false
 		}
 	}

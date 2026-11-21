@@ -27,7 +27,7 @@
 {{define "checks"}}
 <table class="checks">
   <tbody>
-  {{range .Checks}}<tr><td class="state"><span class="mark {{.Class}}">{{.State}}</span></td><th scope="row">{{.Question}}</th><td>{{.Note}}</td></tr>
+  {{range .Checks}}<tr><td class="state"><span class="mark {{.Class}}">{{.State}}</span>{{if .Cached}}<br><span class="mark open" title="{{.Source}}">cached files</span>{{end}}</td><th scope="row">{{.Question}}</th><td>{{.Note}}</td></tr>
   {{end}}
   </tbody>
 </table>

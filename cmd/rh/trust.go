@@ -27,6 +27,7 @@ func runTrust(args []string, stdout, stderr io.Writer) error {
 	checker := fs.String("lean4checker", "", "the path of the lean4checker program; empty to skip the replay")
 	timeout := fs.Duration("timeout", 0, "the time limit of each run, for example 6h; 0 for no limit")
 	printFile := fs.Bool("print", false, "print the Lean file of the axiom check and stop")
+	artifactsFile := fs.String("artifacts", "", "a JSON file that tells where the compiled files come from; the trust report records it next to the outcome of Q2 and Q3")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return err
@@ -49,10 +50,15 @@ func runTrust(args []string, stdout, stderr io.Writer) error {
 	if *lean == "" {
 		return fmt.Errorf("%w: trust needs -lean", errUsage)
 	}
+	arts, err := trust.ReadArtifacts(*artifactsFile)
+	if err != nil {
+		return err
+	}
 	o := trust.Options{Dir: *lean, Lake: *lake, Module: *module, Names: list, Timeout: *timeout}
 	ctx := context.Background()
 
 	ax, out, err := trust.CheckAxioms(ctx, o)
+	ax.Artifacts = arts
 	if err != nil {
 		fmt.Fprintf(stderr, "%s\n", lastLines(out, 30))
 		return fmt.Errorf("the axiom check: %w", err)
@@ -81,8 +87,12 @@ func runTrust(args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("the replay: %w", err)
 		}
+		r.Artifacts = arts
 		rp = &r
 		fmt.Fprintf(stdout, "lean4checker on %s: exit %d after %.0f seconds\n", r.Module, r.Exit, r.Seconds)
+	}
+	if arts.IsCached() {
+		fmt.Fprintln(stdout, "These checks ran on cached build files. The trust report marks them as cached, and the site does not count them as a claim.")
 	}
 
 	if *content != "" {
@@ -138,6 +148,7 @@ func writeTrust(content string, ax trust.Axioms, rp *trust.Replay) error {
 		}
 		q2.Note = strings.Join(bad, ". ") + fmt.Sprintf(". Checked on %s.", ax.Date)
 	}
+	markSource(&q2, ax.Artifacts)
 	setCheck(&t, q2)
 	if rp != nil {
 		q3 := site.TrustCheck{ID: "Q3", Question: "Does a second kernel accept the proof?"}
@@ -148,10 +159,24 @@ func writeTrust(content string, ax trust.Axioms, rp *trust.Replay) error {
 			q3.State = "no"
 			q3.Note = fmt.Sprintf("%s on %s exited with code %d on %s. See records/replay.json.", rp.Tool, rp.Module, rp.Exit, rp.Date)
 		}
+		markSource(&q3, rp.Artifacts)
 		setCheck(&t, q3)
 	}
 	t.Updated = ax.Date
 	return writeJSONFile(path, t)
+}
+
+// markSource records where the compiled files of c come from. It does not change the outcome of c: the state stays yes or no, and the fields Artifacts and Source carry the provenance. The site does not count a check on cached files as a claim.
+func markSource(c *site.TrustCheck, a *trust.Artifacts) {
+	if a == nil {
+		return
+	}
+	c.Artifacts = a.Kind
+	c.Source = a.Source
+	if a.Revision != "" {
+		c.Source += " at " + a.Revision
+	}
+	c.Note += " " + a.Describe()
 }
 
 // setCheck replaces the row with the ID of c, or adds it.

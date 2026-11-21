@@ -59,6 +59,8 @@ type Axioms struct {
 	Seconds  float64   `json:"seconds"`
 	Theorems []Theorem `json:"theorems"`
 	OK       bool      `json:"ok"` // each theorem has only standard axioms, and the two methods agree
+	// Artifacts tells where the compiled files come from. It is nil when the run did not say.
+	Artifacts *Artifacts `json:"artifacts,omitempty"`
 }
 
 // Replay is the result of lean4checker, records/replay.json.
@@ -70,6 +72,8 @@ type Replay struct {
 	Exit    int     `json:"exit"`
 	Tail    string  `json:"tail"` // the last lines of the output
 	OK      bool    `json:"ok"`
+	// Artifacts tells where the compiled files come from. It is nil when the run did not say.
+	Artifacts *Artifacts `json:"artifacts,omitempty"`
 }
 
 // File returns the Lean file of the axiom check. It imports module and checks each theorem in names with both methods.
